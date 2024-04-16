@@ -1,0 +1,139 @@
+        case 'ECH-new'
+            
+         
+            class_size = 5;
+            numEx = 3;
+                
+
+            %parameter
+            for i = 1 : numCPU
+                    para.nbits = bit*numEx;
+                    para.ECOC_i = 1;  
+                    para.ECOC_M = zeros(0, para.nbits);
+        
+                    para.seen_labels =[];
+                    para.stepsize = 0.1;
+                    para.SGDBoost = 1;
+
+
+                    % LSH init
+                    d = size(Xtraining, 2);
+                    W = randn(d, para.nbits);
+                    W = W ./ repmat(diag(sqrt(W'*W))',d,1);
+                    para.W = W;                 
+                    
+                    para.count = zeros(para.nbits,1);
+                    
+%                     paras = [paras, para];
+            end                    
+                    
+                    rl = randperm(size(Xtraining, 1));        
+                 
+                     C = 1;
+                    
+                tic;        
+                    
+
+
+                    for i = 1 : iter
+
+
+
+                        if i == iterations(1)
+                            query_count = 1;
+                        end
+                        if i == iterations(2)
+                            query_count = 2;
+                        end
+                        if i == iterations(3)
+                            query_count = 3;
+                        end
+
+                        chunk = Xchunk((i-1)*chunk_size+1:i*chunk_size, :);
+                        chunk_label = XchunkLabels((i-1)*chunk_size+1:i*chunk_size, :);
+
+
+                        for j = 1 : size(chunk, 1)
+                            ll = find(chunk_label(j,:) ~= 0);
+                            for LL = 1 : length(ll)
+                                [target_codes, para] = find_target_codes(ll(LL), para);
+                                X = chunk(j,:);
+        %                         X = [X 1];
+                                t = ones(1, para.nbits) -X * para.W .* target_codes ./ (X*X');
+                                l = find(t < 0);
+                                t(l) = 0;
+
+                                para.count(l) = bsxfun(@plus, para.count(l), 1);
+
+                                l = find(t > C);
+                                t(l) = C;
+
+                                para.W = para.W + bsxfun(@times, (X' * target_codes), t);
+                            end
+                        end
+                        
+                        
+                        W = para.W;
+
+                        
+                        epison = 0.00000001;
+                        alpha = 10;
+                        inds = [];
+                        count = para.count;
+                        counts = zeros(size(count));
+                        for si = 1 : bit
+    %                         cc = counts + log(count+epison);
+                            if si == 1
+                                cc = log(count+epison);
+                            else
+                                cc = log(sum(count(inds))+count+epison) + counts;
+                            end
+                            [~, ind] = sort(-cc);
+                            j = 1;
+                            while (ismember(ind(j),inds))
+                                j = j + 1;
+                            end
+                            j = ind(j);
+                            inds = [inds j];
+                            for l = 1 : bit * numEx
+                                c = W(:, l)' * W(:, j) / norm(W(:, l)) / norm(W(:, j));
+    %                             if alpha ~= -1
+                                    counts(l) =counts(l) + log ((1-abs(c)+alpha)/(1+alpha)+epison);
+    %                               counts(l) = counts(l) + alpha * (1-abs(c));
+    %                               counts(l) = counts(l) + alpha * (count(l) *( 1 - abs(c))) ;  
+    %                             end
+                            end
+                        end
+
+    %                     [~, l] = sort(-count);
+                        W = W(:, inds);                        
+                        
+                        
+                        BTSPLH_Y_train = Xchunk(1:i*chunk_size,:) * W;
+                        BTSPLH_Y_test = Xtest(1:query_sizes(query_count),:) * W;
+%                         B1 = compactbit(BTSPLH_Y_train);
+%                         B2 = compactbit(BTSPLH_Y_test);
+        %                 mAP = cal_map(B1, B2, groundTruth(1:query_size,:));
+                        BTSPLH_Y_train(BTSPLH_Y_train >= 0) = 1;
+                        BTSPLH_Y_train(BTSPLH_Y_train < 0) = -1;
+                        BTSPLH_Y_test(BTSPLH_Y_test >= 0) = 1;
+                        BTSPLH_Y_test(BTSPLH_Y_test < 0) = -1;
+
+                        [pre, prep, mAP] = cal_precision_multi_label(BTSPLH_Y_train, BTSPLH_Y_test, XchunkLabels(1:i*chunk_size,:), XtestLabels(1:query_sizes(query_count),:));
+
+                        mAPs = [mAPs, mAP];
+                        pres = [pres, pre];
+                        preps = [preps, prep];
+                    end            
+                    
+
+                    
+
+ 
+
+
+                    
+
+                    
+            
+
